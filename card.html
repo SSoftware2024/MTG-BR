@@ -73,7 +73,6 @@
   <script>
     let mtgKeywords = {};
 
-    // Carregar arquivo JSON de keywords
     async function loadKeywords() {
       try {
         const res = await fetch('mtg_keywords.json');
@@ -91,46 +90,45 @@
       document.getElementById('loader').style.display = 'none';
     }
 
-    // Substitui keywords em qualquer lugar do texto mantendo capitalização inicial
-    function translateKeywordsAnywhere(text) {
-      if (!text) return '';
+    // Função que substitui keywords e retorna lista de posições para não traduzir pela API
+    function replaceKeywords(text) {
+      if (!text) return { text, positions: [] };
 
-      let translated = text;
-      const keys = Object.keys(mtgKeywords).sort((a, b) => b.length - a.length);
+      let newText = text;
+      const positions = []; // array de {start,end} das keywords
+      const keys = Object.keys(mtgKeywords).sort((a,b)=>b.length-a.length);
 
       for (const key of keys) {
-        const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const regex = new RegExp(escapedKey, 'gi');
+        const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+        const regex = new RegExp(escapedKey,'gi');
 
-        translated = translated.replace(regex, match => {
+        let match;
+        while ((match = regex.exec(newText)) !== null) {
           const replacement = mtgKeywords[key];
-          // Mantém capitalização da primeira letra
-          return match[0] === match[0].toUpperCase()
-            ? replacement[0].toUpperCase() + replacement.slice(1)
-            : replacement[0].toLowerCase() + replacement.slice(1);
-        });
+          newText = newText.slice(0, match.index) + replacement + newText.slice(match.index + match[0].length);
+          positions.push({start: match.index, end: match.index + replacement.length});
+          regex.lastIndex = match.index + replacement.length;
+        }
       }
 
-      return translated;
+      return { text: newText, positions };
     }
 
-    // Tradução: keywords primeiro, resto via API
+    // Traduzir texto completo respeitando keywords
     async function translateText(text) {
       if (!text) return '';
 
-      const keywordTranslated = translateKeywordsAnywhere(text);
-
-      // Se alguma keyword foi traduzida, retorna diretamente
-      if (keywordTranslated !== text) return keywordTranslated;
+      // Primeiro substitui keywords
+      const { text: keywordText } = replaceKeywords(text);
 
       try {
-        const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|pt`;
+        const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(keywordText)}&langpair=en|pt`;
         const res = await fetch(url);
         const data = await res.json();
-        return data.responseData.translatedText || text;
+        return data.responseData.translatedText || keywordText;
       } catch (e) {
         console.error('Erro na tradução', e);
-        return text;
+        return keywordText;
       }
     }
 
@@ -146,12 +144,12 @@
         const container = document.getElementById('card-container');
         container.innerHTML = '';
 
-        async function renderFace(face, faceIndex = 1) {
+        async function renderFace(face, faceIndex=1){
           const faceDiv = document.createElement('div');
           const nameOriginal = face.name || card.name || 'Sem nome';
           const oracleText = face.oracle_text || card.oracle_text || 'Sem texto';
 
-          const nameTranslated = translateKeywordsAnywhere(nameOriginal);
+          const nameTranslated = replaceKeywords(nameOriginal).text;
           const textTranslated = await translateText(oracleText);
 
           faceDiv.innerHTML = `
@@ -168,38 +166,38 @@
             </div>
           `;
 
-          if (faceIndex > 1) {
+          if(faceIndex>1){
             const hr = document.createElement('hr');
-            hr.className = 'separator';
+            hr.className='separator';
             container.appendChild(hr);
           }
 
           container.appendChild(faceDiv);
         }
 
-        if (card.card_faces && card.card_faces.length > 1) {
-          for (let i = 0; i < card.card_faces.length; i++) {
-            await renderFace(card.card_faces[i], i + 1);
+        if(card.card_faces && card.card_faces.length>1){
+          for(let i=0;i<card.card_faces.length;i++){
+            await renderFace(card.card_faces[i],i+1);
           }
-        } else {
+        }else{
           await renderFace(card);
         }
 
-      } catch (e) {
-        console.error('Erro ao carregar carta', e);
+      } catch(e){
+        console.error('Erro ao carregar carta',e);
         document.getElementById('card-container').textContent = 'Erro ao carregar a carta.';
-      } finally {
+      }finally{
         hideLoader();
       }
     }
 
-    document.getElementById('back-btn').onclick = () => {
-      if (document.referrer.includes('index.html')) {
+    document.getElementById('back-btn').onclick = ()=>{
+      if(document.referrer.includes('index.html')){
         window.history.back();
-      } else {
+      }else{
         const params = new URLSearchParams(window.location.search);
-        const q = params.get('q') || '';
-        const page = params.get('page') || 1;
+        const q = params.get('q')||'';
+        const page = params.get('page')||1;
         window.location.href = `index.html?q=${encodeURIComponent(q)}&page=${page}`;
       }
     }
@@ -208,5 +206,4 @@
   </script>
 
 </body>
-
 </html>
