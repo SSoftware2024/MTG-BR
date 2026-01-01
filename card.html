@@ -67,13 +67,13 @@
 
   <div class="max-w-3xl mx-auto">
     <button id="back-btn" class="back-btn">← Voltar</button>
-
     <div id="card-container" class="card-container"></div>
   </div>
 
   <script>
     let mtgKeywords = {};
 
+    // Carregar arquivo JSON de keywords
     async function loadKeywords() {
       try {
         const res = await fetch('mtg_keywords.json');
@@ -91,33 +91,36 @@
       document.getElementById('loader').style.display = 'none';
     }
 
-    // Função que substitui apenas keywords exatas
-    function translateKeywordsExact(text) {
+    // Substitui keywords em qualquer lugar do texto mantendo capitalização inicial
+    function translateKeywordsAnywhere(text) {
       if (!text) return '';
-      let translated = text;
 
-      // Ordena as keys por tamanho decrescente para evitar substituir parcial
+      let translated = text;
       const keys = Object.keys(mtgKeywords).sort((a, b) => b.length - a.length);
 
       for (const key of keys) {
-        // Escapa caracteres especiais
         const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        // Regex com word boundaries (\b) para pegar palavras inteiras
-        const regex = new RegExp(`\\b${escapedKey}\\b`, 'gi');
-        translated = translated.replace(regex, mtgKeywords[key]);
+        const regex = new RegExp(escapedKey, 'gi');
+
+        translated = translated.replace(regex, match => {
+          const replacement = mtgKeywords[key];
+          // Mantém capitalização da primeira letra
+          return match[0] === match[0].toUpperCase()
+            ? replacement[0].toUpperCase() + replacement.slice(1)
+            : replacement[0].toLowerCase() + replacement.slice(1);
+        });
       }
 
       return translated;
     }
 
-    // Função de tradução via API (apenas o resto que não é keyword)
+    // Tradução: keywords primeiro, resto via API
     async function translateText(text) {
       if (!text) return '';
 
-      // Primeiro substitui keywords exatas
-      const keywordTranslated = translateKeywordsExact(text);
+      const keywordTranslated = translateKeywordsAnywhere(text);
 
-      // Se não houver mudança, significa que não tem keywords -> enviar para API
+      // Se alguma keyword foi traduzida, retorna diretamente
       if (keywordTranslated !== text) return keywordTranslated;
 
       try {
@@ -148,7 +151,7 @@
           const nameOriginal = face.name || card.name || 'Sem nome';
           const oracleText = face.oracle_text || card.oracle_text || 'Sem texto';
 
-          const nameTranslated = translateKeywordsExact(nameOriginal);
+          const nameTranslated = translateKeywordsAnywhere(nameOriginal);
           const textTranslated = await translateText(oracleText);
 
           faceDiv.innerHTML = `
