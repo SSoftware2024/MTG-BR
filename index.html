@@ -137,7 +137,7 @@
     let currentPage = 1;
     let lastQuery = '';
     let totalPages = 0;
-    const API_TIMEOUT = 10000;
+    const API_TIMEOUT = 60000; //60 segundos => 1min
 
     function updateURL() {
       const params = new URLSearchParams();
@@ -344,5 +344,6 @@
     });
   </script>
 </body>
+
 
 </html>
