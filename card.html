@@ -5,7 +5,6 @@
   <meta charset="UTF-8">
   <title>MTG BR - CARTA</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta charset="utf-8" />
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="icon" href="favicon.ico" />
   <style>
@@ -75,7 +74,6 @@
   <script>
     let mtgKeywords = {};
 
-    // Carregar arquivo de keywords
     async function loadKeywords() {
       try {
         const res = await fetch('mtg_keywords.json');
@@ -93,26 +91,35 @@
       document.getElementById('loader').style.display = 'none';
     }
 
-    // Função que substitui keywords no texto
-    function translateKeywords(text) {
+    // Função que substitui apenas keywords exatas
+    function translateKeywordsExact(text) {
       if (!text) return '';
       let translated = text;
-      for (const key in mtgKeywords) {
-        // Escapa caracteres especiais para regex
+
+      // Ordena as keys por tamanho decrescente para evitar substituir parcial
+      const keys = Object.keys(mtgKeywords).sort((a, b) => b.length - a.length);
+
+      for (const key of keys) {
+        // Escapa caracteres especiais
         const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const regex = new RegExp(escapedKey, 'gi');
+        // Regex com word boundaries (\b) para pegar palavras inteiras
+        const regex = new RegExp(`\\b${escapedKey}\\b`, 'gi');
         translated = translated.replace(regex, mtgKeywords[key]);
       }
+
       return translated;
     }
 
-    // Função de tradução via API (para o resto do texto)
+    // Função de tradução via API (apenas o resto que não é keyword)
     async function translateText(text) {
       if (!text) return '';
-      // Primeiro substitui keywords
-      const keywordTranslated = translateKeywords(text);
-      // Se o texto não mudou, não precisa da API
+
+      // Primeiro substitui keywords exatas
+      const keywordTranslated = translateKeywordsExact(text);
+
+      // Se não houver mudança, significa que não tem keywords -> enviar para API
       if (keywordTranslated !== text) return keywordTranslated;
+
       try {
         const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|pt`;
         const res = await fetch(url);
@@ -141,7 +148,7 @@
           const nameOriginal = face.name || card.name || 'Sem nome';
           const oracleText = face.oracle_text || card.oracle_text || 'Sem texto';
 
-          const nameTranslated = translateKeywords(nameOriginal);
+          const nameTranslated = translateKeywordsExact(nameOriginal);
           const textTranslated = await translateText(oracleText);
 
           faceDiv.innerHTML = `
@@ -194,7 +201,6 @@
       }
     }
 
-    // Carregar keywords e depois pegar a carta
     loadKeywords().then(getCard);
   </script>
 
