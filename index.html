@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8">
+  <title>MTG BR</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="utf-8" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="icon" href="favicon.ico" />
+  <style>
+    /* Container das cartas */
+    .card-container {
+      position: relative;
+      transition: transform 0.2s;
+      cursor: pointer;
+      padding: 0.5rem;
+      border-radius: 0.5rem;
+      background-color: white;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    input.search {
+      box-shadow: rgba(6, 24, 44, 0.4) 0px 0px 0px 2px, rgba(6, 24, 44, 0.65) 0px 4px 6px -1px, rgba(255, 255, 255, 0.08) 0px 1px 0px inset;
+    }
+
+    /* Carta dupla */
+    .double-face {
+      background-color: #3b82f6;
+      /* azul mais visível */
+      color: white;
+      animation: bounce 1s infinite alternate;
+    }
+
+    @keyframes bounce {
+      0% {
+        transform: scale(1);
+      }
+
+      100% {
+        transform: scale(1.03);
+      }
+    }
+
+    /* Botão virar */
+    .flip-btn {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: none;
+      font-size: 0.75rem;
+    }
+
+    .card-container:hover .flip-btn {
+      display: block;
+    }
+
+    #flip-info {
+      text-align: center;
+      font-weight: bold;
+      margin-bottom: 10px;
+      color: #1e40af;
+    }
+
+    #loading {
+      text-align: center;
+      margin: 2rem 0;
+    }
+
+    /* Imagem da carta (aumentada) */
+    img.card-img {
+      display: block;
+      margin: 0 auto 0.5rem;
+      max-width: 100%;
+      /* maior visualização */
+      height: auto;
+      border-radius: 0.25rem;
+    }
+
+    /* Grid responsivo para 5 colunas fixas */
+    #results {
+      display: grid;
+      gap: 1rem;
+      grid-template-columns: repeat(2, 1fr);
+      /* padrão mobile */
+    }
+
+    @media (min-width: 640px) {
+      #results {
+        grid-template-columns: repeat(3, 1fr);
+      }
+    }
+
+    @media (min-width: 768px) {
+      #results {
+        grid-template-columns: repeat(5, 1fr);
+        /* fixo 5 colunas a partir de 768px */
+      }
+    }
+
+    @media (min-width: 1024px) {
+      #results {
+        grid-template-columns: repeat(5, 1fr);
+        /* mantém 5 colunas */
+      }
+    }
+
+    @media (min-width: 1280px) {
+      #results {
+        grid-template-columns: repeat(5, 1fr);
+        /* mantém 5 colunas */
+      }
+    }
+  </style>
+</head>
+
+<body class="bg-gray-100 min-h-screen p-6">
+  <div class="max-w-6xl mx-auto">
+    <h1 class="text-3xl font-bold mb-6 text-center">Busca de Cartas MTG (Scryfall)</h1>
+    <p>Busca cartas apenas em inglês, resultando no texto original e <span class="text-red-500"> tradução apenas em
+        PT-BR</span></p>
+
+    <input id="search" type="text" placeholder="Digite o nome da carta, APENAS EM INGLÊS!"
+      class="w-full p-4 border rounded mb-6 text-lg search" />
+
+    <p id="info" class="text-center text-sm text-gray-600 mb-4"></p>
+    <div id="flip-info"></div>
+
+    <div id="pagination-top" class="flex flex-wrap justify-center gap-2 mb-4"></div>
+    <div id="loading"></div>
+    <div id="results" class="grid gap-6"></div>
+    <div id="pagination-bottom" class="flex flex-wrap justify-center gap-2 mt-6"></div>
+  </div>
+
+  <script>
+    let currentPage = 1;
+    let lastQuery = '';
+    let totalPages = 0;
+    const API_TIMEOUT = 10000;
+
+    function updateURL() {
+      const params = new URLSearchParams();
+      if (lastQuery) params.set('q', lastQuery);
+      if (currentPage > 1) params.set('page', currentPage);
+      history.pushState({}, '', window.location.pathname + '?' + params.toString());
+    }
+
+    function getQueryFromURL() {
+      const params = new URLSearchParams(window.location.search);
+      return {
+        q: params.get('q') || '',
+        page: parseInt(params.get('page') || '1', 10)
+      };
+    }
+
+    async function searchCards(page = 1) {
+      const results = document.getElementById('results');
+      const paginationTop = document.getElementById('pagination-top');
+      const paginationBottom = document.getElementById('pagination-bottom');
+      const info = document.getElementById('info');
+      const flipInfo = document.getElementById('flip-info');
+      const loading = document.getElementById('loading');
+
+      results.innerHTML = '';
+      paginationTop.innerHTML = '';
+      paginationBottom.innerHTML = '';
+      info.textContent = '';
+      flipInfo.textContent = '';
+      loading.innerHTML = '<img src="https://i.gifer.com/ZZ5H.gif" alt="loading..." width="50"> Carregando...';
+
+      currentPage = page;
+      updateURL();
+
+      if (!lastQuery) {
+        loading.innerHTML = '';
+        return;
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
+
+      try {
+        const url = `https://api.scryfall.com/cards/search?q=${encodeURIComponent(lastQuery)}&unique=cards&order=name&page=${page}`;
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        if (!res.ok) {
+          results.innerHTML = 'Nenhuma carta encontrada.';
+          loading.innerHTML = '';
+          return;
+        }
+
+        const data = await res.json();
+
+        if (data.total_cards === 0) {
+          results.innerHTML = 'Nenhuma carta encontrada.';
+          loading.innerHTML = '';
+          return;
+        }
+
+        totalPages = Math.ceil(data.total_cards / data.data.length);
+
+        if (currentPage > totalPages) {
+          results.innerHTML = `Página ${currentPage} não existe. Total de páginas: ${totalPages}.`;
+          loading.innerHTML = '';
+          return;
+        }
+
+        info.textContent = `Página ${currentPage} de ${totalPages} — ${data.total_cards} cartas`;
+
+        let doubleFaceCount = 0;
+
+        // Criar elementos, mas não esconder loading até todas imagens carregarem
+        const imagePromises = data.data.map(card => {
+          let frontImg = '';
+          let backImg = '';
+          let isDouble = false;
+
+          if (card.image_uris) {
+            frontImg = card.image_uris.normal || card.image_uris.small;
+          } else if (card.card_faces && card.card_faces.length > 1) {
+            frontImg = card.card_faces[0].image_uris?.normal || card.card_faces[0].image_uris?.small;
+            backImg = card.card_faces[1].image_uris?.normal || card.card_faces[1].image_uris?.small;
+            isDouble = true;
+            doubleFaceCount++;
+          } else if (card.card_faces && card.card_faces.length === 1) {
+            frontImg = card.card_faces[0].image_uris?.normal || card.card_faces[0].image_uris?.small;
+          } else return null;
+
+          const div = document.createElement('div');
+          div.className = 'card-container hover:scale-105 transition ' + (isDouble ? 'double-face' : '');
+          div.innerHTML = `
+            <img src="${frontImg}" class="mx-auto mb-2 rounded card-img">
+            <p class="text-sm text-center font-medium">${card.name}</p>
+            ${isDouble ? '<button class="flip-btn px-3 py-1 bg-red-600 text-white rounded text-xs">VIRAR</button>' : ''}
+          `;
+
+          const imgEl = div.querySelector('img');
+          const imgLoadPromise = new Promise(resolve => {
+            imgEl.onload = resolve;
+            imgEl.onerror = resolve; // resolve mesmo se falhar
+          });
+          const url = `card.html?id=${card.id}&q=${encodeURIComponent(lastQuery)}&page=${currentPage}`;
+
+          // qualquer clique
+          imgEl.addEventListener('click', (e) => {
+            // botão esquerdo
+            if (e.button === 0) {
+              window.location.href = url;
+            }
+          });
+
+          // botão do meio (scroll)
+          imgEl.addEventListener('auxclick', (e) => {
+            if (e.button === 1) {
+              window.open(url, '_blank');
+            }
+          });
+
+          if (isDouble) {
+            const btn = div.querySelector('.flip-btn');
+            let flipped = false;
+            btn.onclick = (e) => {
+              e.stopPropagation();
+              imgEl.src = flipped ? frontImg : backImg;
+              flipped = !flipped;
+            };
+          }
+
+          results.appendChild(div);
+          return imgLoadPromise;
+        });
+
+        if (doubleFaceCount > 0) {
+          flipInfo.textContent = 'Cartas com esta característica flipam';
+        }
+
+        // Aguarda todas imagens carregarem antes de esconder loading
+        await Promise.all(imagePromises);
+        loading.innerHTML = '';
+
+        if (totalPages > 1) {
+          renderPagination(paginationTop);
+          renderPagination(paginationBottom);
+        }
+
+      } catch (err) {
+        clearTimeout(timeoutId);
+        loading.innerHTML = '';
+        results.innerHTML = 'A API não respondeu. Tente novamente mais tarde.';
+      }
+    }
+
+    function renderPagination(container) {
+      container.innerHTML = '';
+
+      const addButton = (label, page, active = false) => {
+        const btn = document.createElement('button');
+        btn.textContent = label;
+        btn.className = `px-3 py-1 rounded border text-sm ${active ? 'bg-blue-600 text-white' : 'bg-white hover:bg-gray-200'}`;
+        btn.onclick = () => searchCards(page);
+        container.appendChild(btn);
+      };
+
+      if (currentPage > 1) {
+        addButton('«', 1);
+        addButton('‹', currentPage - 1);
+      }
+
+      const maxButtons = 5;
+      let start = Math.max(2, currentPage - Math.floor(maxButtons / 2));
+      let end = Math.min(totalPages - 1, start + maxButtons - 1);
+      if (end - start < maxButtons - 1) start = Math.max(2, end - maxButtons + 1);
+
+      if (start > 2) container.appendChild(document.createElement('span')).textContent = '...';
+
+      for (let i = start; i <= end; i++) addButton(i, i, i === currentPage);
+
+      if (end < totalPages - 1) container.appendChild(document.createElement('span')).textContent = '...';
+
+      if (totalPages > 1) addButton(totalPages, totalPages, currentPage === totalPages);
+
+      if (currentPage < totalPages) {
+        addButton('›', currentPage + 1);
+        addButton('»', totalPages);
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      const params = getQueryFromURL();
+      lastQuery = params.q;
+      currentPage = params.page;
+      document.getElementById('search').value = lastQuery;
+      if (lastQuery) searchCards(currentPage);
+    });
+
+    document.getElementById('search').addEventListener('keydown', e => {
+      if (e.key !== 'Enter') return;
+      lastQuery = e.target.value.trim();
+      if (!lastQuery) return;
+      currentPage = 1;
+      searchCards();
+    });
+  </script>
+</body>
+
+</html>

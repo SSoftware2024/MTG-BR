@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8">
+  <title>MTG BR - CARTA</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="utf-8" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="icon" href="favicon.ico" />
+  <style>
+    /* Permite que quebras de linha sejam respeitadas */
+    .card-text {
+      white-space: pre-wrap;
+      line-height: 1.5;
+    }
+
+    .card-container {
+      margin-bottom: 2rem;
+      background-color: #fff;
+      padding: 1rem;
+      border-radius: 0.5rem;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      position: relative;
+    }
+
+    .card-img {
+      max-width: 100%;
+      border-radius: 0.25rem;
+      margin-bottom: 1rem;
+    }
+
+    .separator {
+      border-top: 2px dashed #1e40af;
+      margin: 2rem 0;
+    }
+
+    .back-btn {
+      display: inline-block;
+      margin-bottom: 1rem;
+      padding: 0.5rem 1rem;
+      background-color: #1e40af;
+      color: #fff;
+      font-weight: bold;
+      border-radius: 0.25rem;
+      cursor: pointer;
+    }
+
+    .back-btn:hover {
+      background-color: #2563eb;
+    }
+
+    /* Loader centralizado */
+    #loader {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 50;
+      display: none;
+    }
+  </style>
+</head>
+
+<body class="bg-gray-100 min-h-screen p-6">
+
+  <!-- Loader -->
+  <div id="loader">
+    <img src="loading-wtf.gif" alt="Carregando..." width="200" />
+    <!-- <img src="https://i.gifer.com/ZZ5H.gif" alt="Carregando..." width="80" /> -->
+  </div>
+
+  <div class="max-w-3xl mx-auto">
+    <button id="back-btn" class="back-btn">← Voltar</button>
+
+    <div id="card-container" class="card-container">
+      <!-- Os dados serão inseridos via JS -->
+    </div>
+  </div>
+
+  <script>
+    // Mostrar loader
+    function showLoader() {
+      document.getElementById('loader').style.display = 'block';
+    }
+    // Esconder loader
+    function hideLoader() {
+      document.getElementById('loader').style.display = 'none';
+    }
+
+    // Função principal
+    async function getCard() {
+      showLoader(); // mostrar ao iniciar
+      const params = new URLSearchParams(window.location.search);
+      const id = params.get('id');
+      if (!id) return;
+
+      try {
+        const res = await fetch(`https://api.scryfall.com/cards/${id}`);
+        const card = await res.json();
+
+        const container = document.getElementById('card-container');
+        container.innerHTML = '';
+
+        // Função auxiliar para criar o HTML de cada face
+        async function renderFace(face, faceIndex = 1) {
+          const faceDiv = document.createElement('div');
+
+          // Nome e texto
+          const nameOriginal = face.name || card.name || 'Sem nome';
+          const oracleText = face.oracle_text || card.oracle_text || 'Sem texto';
+
+          // Traduções
+          const nameTranslated = await translateText(nameOriginal);
+          const textTranslated = await translateText(oracleText);
+
+          faceDiv.innerHTML = `
+        <h1 class="text-2xl font-bold mb-2">${nameOriginal}</h1>
+        <h2 class="text-xl font-semibold mb-4 text-gray-700">${nameTranslated}</h2>
+        <img src="${face.image_uris?.normal || card.image_uris?.normal || ''}" class="card-img" />
+        <div class="mb-4">
+          <h3 class="font-semibold">Texto Original:</h3>
+          <p class="card-text bg-gray-100 p-3 rounded mb-2">${oracleText}</p>
+        </div>
+        <div>
+          <h3 class="font-semibold">Texto em Português:</h3>
+          <p class="card-text bg-gray-100 p-3 rounded">${textTranslated}</p>
+        </div>
+      `;
+
+          if (faceIndex > 1) {
+            // Separador se for lado 2
+            const hr = document.createElement('hr');
+            hr.className = 'separator';
+            container.appendChild(hr);
+          }
+
+          container.appendChild(faceDiv);
+        }
+
+        // Verifica se tem faces múltiplas
+        if (card.card_faces && card.card_faces.length > 1) {
+          for (let i = 0; i < card.card_faces.length; i++) {
+            await renderFace(card.card_faces[i], i + 1);
+          }
+        } else {
+          // Carta normal
+          await renderFace(card);
+        }
+
+      } catch (e) {
+        console.error('Erro ao carregar carta', e);
+        document.getElementById('card-container').textContent = 'Erro ao carregar a carta.';
+      } finally {
+        hideLoader(); // esconder ao finalizar
+      }
+    }
+
+    // Função de tradução via MyMemory
+    async function translateText(text) {
+      if (!text) return '';
+      try {
+        const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|pt`;
+        const res = await fetch(url);
+        const data = await res.json();
+        return data.responseData.translatedText || text;
+      } catch (e) {
+        console.error('Erro na tradução', e);
+        return text;
+      }
+    }
+
+    // Botão voltar mantendo query e página
+    document.getElementById('back-btn').onclick = () => {
+      if (document.referrer.includes('index.html')) {
+        window.history.back();
+      } else {
+        const params = new URLSearchParams(window.location.search);
+        const q = params.get('q') || '';
+        const page = params.get('page') || 1;
+        window.location.href = `index.html?q=${encodeURIComponent(q)}&page=${page}`;
+      }
+    }
+
+    getCard();
+  </script>
+
+</body>
+
+</html>
